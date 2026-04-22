@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neuron Simulator</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --orange: #f5a842;
+    --red: #c0392b;
+    --gray: #555;
+    --gray-light: #888;
+    --bg: #111;
+    --surface: #1a1a1a;
+    --surface2: #222;
+    --border: #333;
+    --text: #eee;
+    --text-dim: #888;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    min-height: 100vh;
+    padding: 24px 16px 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 780px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  /* ── Question input ── */
+  .question-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+  }
+  .question-row label {
+    font-size: 13px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+  .question-row input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  /* ── Diagram ── */
+  .diagram-wrap {
+    width: 100%;
+  }
+  #diagram-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  /* SVG text shared */
+  .node-label {
+    font-size: 12px;
+    fill: var(--text-dim);
+    font-family: inherit;
+  }
+  .node-val {
+    font-size: 16px;
+    font-weight: 700;
+    font-family: inherit;
+  }
+  .weight-label {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: inherit;
+  }
+
+  /* editable label foreignObject inputs */
+  .svg-label-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-family: inherit;
+    width: 100%;
+    outline: none;
+    text-align: right;
+    cursor: text;
+    padding: 0;
+  }
+  .svg-label-input:focus {
+    border-bottom-color: var(--orange);
+    color: var(--text);
+  }
+
+  .hint {
+    font-size: 12px;
+    color: var(--text-dim);
+    text-align: center;
+    margin-top: -12px;
+  }
+
+  /* ── Weights panel ── */
+  .panel-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .weights-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .weight-row {
+    display: grid;
+    grid-template-columns: 14px 1fr auto auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .weight-row:last-child { border-bottom: none; }
+
+  .dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .weight-input-label {
+    font-size: 13px;
+    color: var(--text);
+    cursor: text;
+    border-bottom: 1px solid transparent;
+    padding: 1px 2px;
+    outline: none;
+    background: transparent;
+    min-width: 60px;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .weight-input-label:focus {
+    border-bottom-color: var(--orange);
+    color: var(--text);
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    outline: none;
+    cursor: pointer;
+    min-width: 140px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--gray-light);
+    cursor: pointer;
+    transition: background .15s;
+  }
+  input[type=range].active::-webkit-slider-thumb { background: var(--orange); }
+  input[type=range]::-moz-range-thumb {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--gray-light);
+    border: none;
+    cursor: pointer;
+  }
+  input[type=range].active::-moz-range-thumb { background: var(--orange); }
+
+  .weight-val {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    min-width: 40px;
+    color: var(--text);
+  }
+
+  .contribution {
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    min-width: 50px;
+    text-align: right;
+    font-weight: 600;
+  }
+  .contrib-pos { color: #4caf50; }
+  .contrib-neg { color: var(--red); }
+  .contrib-off { color: var(--text-dim); font-weight: 400; }
+
+  /* ── Math strip ── */
+  .math-strip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--orange);
+    line-height: 1.9;
+    white-space: pre;
+  }
+
+  /* ── Verdict card ── */
+  .verdict-card {
+    border: 1.5px solid #4caf50;
+    border-radius: 12px;
+    padding: 28px 24px;
+    text-align: center;
+    background: rgba(76,175,80,.06);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .verdict-card.inactive {
+    border-color: var(--gray);
+    background: rgba(100,100,100,.06);
+  }
+  .verdict-question {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .verdict-number {
+    font-size: 52px;
+    font-weight: 800;
+    color: var(--text-dim);
+    line-height: 1;
+    opacity: .35;
+    font-variant-numeric: tabular-nums;
+  }
+  .verdict-result {
+    font-size: 22px;
+    font-weight: 700;
+    margin-top: 4px;
+  }
+  .verdict-result.yes { color: #4caf50; }
+  .verdict-result.no  { color: var(--text-dim); }
+  .verdict-why {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  /* ── Reset ── */
+  .bottom-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .reset-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .reset-btn:hover { border-color: var(--orange); color: var(--orange); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Question -->
+  <div class="question-row">
+    <label>Question:</label>
+    <input type="text" id="question-input" value="Should I eat lunch right now?">
+  </div>
+
+  <!-- Diagram -->
+  <div class="diagram-wrap">
+    <svg id="diagram-svg" width="100%" viewBox="-75 0 735 270" preserveAspectRatio="xMidYMid meet"></svg>
+  </div>
+  <p class="hint">Tap an input circle to toggle it on (1) or off (0). Adjust the sliders below to change how much each input matters.</p>
+
+  <!-- Weights panel -->
+  <div>
+    <div class="panel-title">Input Weights — How important is each one?</div>
+    <div class="weights-panel" id="weights-panel"></div>
+  </div>
+
+  <!-- Math strip -->
+  <div class="math-strip" id="math-strip"></div>
+
+  <!-- Verdict -->
+  <div class="verdict-card" id="verdict-card">
+    <div class="verdict-question" id="verdict-question"></div>
+    <div class="verdict-number" id="verdict-number"></div>
+    <div class="verdict-result" id="verdict-result"></div>
+    <div class="verdict-why" id="verdict-why"></div>
+  </div>
+
+  <!-- Bottom -->
+  <div class="bottom-row">
+    <button class="reset-btn" id="reset-btn">Reset to defaults</button>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const DEFAULTS = [
+  { label: "I'm hungry",  value: 1, weight: 3.0 },
+  { label: "Food's tasty", value: 1, weight: 1.0 },
+  { label: "I'm allergic", value: 0, weight: -10.0 },
+];
+
+let inputs = DEFAULTS.map(d => ({ ...d }));
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+const fmt = (n, d=1) => Number(n).toFixed(d);
+const orange = '#f5a842';
+const red    = '#c0392b';
+const gray   = '#555';
+const grayLt = '#888';
+
+function weightedSum() {
+  return inputs.reduce((s, inp) => s + inp.value * inp.weight, 0);
+}
+function activation(x) { return Math.max(0, x); }
+function output() { return activation(weightedSum()); }
+
+// ── SVG Diagram ────────────────────────────────────────────────────────────
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const svg = document.getElementById('diagram-svg');
+
+// Layout constants
+const W = 660, H = 270;
+const nodeR = 26;
+const inputX = 105;
+const sumX   = 360;
+const actX   = 440;
+const outX   = 545;
+const rowY   = [75, 135, 200];
+const midY   = 135;
+
+function el(tag, attrs={}) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+function text(x, y, content, attrs={}) {
+  const t = el('text', { x, y, 'text-anchor': 'middle', 'dominant-baseline': 'central', ...attrs });
+  t.textContent = content;
+  return t;
+}
+
+// Groups for layered updates
+let gLines, gWeightArrows, gNodes, gLabels, gSumNode, gActArrow, gOutNode;
+
+function buildDiagram() {
+  svg.innerHTML = '';
+
+  // ── Defs (arrowhead markers) ──
+  const defs = el('defs');
+
+  function makeMarker(id, color) {
+    const m = el('marker', { id, markerWidth: 7, markerHeight: 7, refX: 5, refY: 3.5, orient: 'auto' });
+    const p = el('polygon', { points: '0 0, 7 3.5, 0 7', fill: color });
+    m.appendChild(p); defs.appendChild(m);
+  }
+  makeMarker('arr-orange', orange);
+  makeMarker('arr-red', red);
+  makeMarker('arr-gray', grayLt);
+  defs.appendChild(el('filter', { id: 'glow', x: '-30%', y: '-30%', width: '160%', height: '160%' }));
+  const feGauss = el('feGaussianBlur', { stdDeviation: '3', result: 'coloredBlur' });
+  const feMerge = el('feMerge');
+  const fmn1 = el('feMergeNode', { in: 'coloredBlur' });
+  const fmn2 = el('feMergeNode', { in: 'SourceGraphic' });
+  feMerge.appendChild(fmn1); feMerge.appendChild(fmn2);
+  const filterEl = svg.querySelector ? defs.querySelector('filter') : null;
+  // simpler: just add children directly
+  const filterNode = defs.lastChild; // the filter we just made
+  filterNode.appendChild(feGauss);
+  filterNode.appendChild(feMerge);
+
+  svg.appendChild(defs);
+
+  // Groups
+  gLines       = el('g', { id: 'g-lines' });
+  gWeightArrows= el('g', { id: 'g-weight-arrows' });
+  gNodes       = el('g', { id: 'g-nodes' });
+  gLabels      = el('g', { id: 'g-labels' });
+  gSumNode     = el('g', { id: 'g-sum' });
+  gActArrow    = el('g', { id: 'g-act' });
+  gOutNode     = el('g', { id: 'g-out' });
+
+  svg.appendChild(gLines);
+  svg.appendChild(gWeightArrows);
+  svg.appendChild(gActArrow);
+  svg.appendChild(gSumNode);
+  svg.appendChild(gOutNode);
+  svg.appendChild(gNodes);
+  svg.appendChild(gLabels);
+
+  // ── Input node boxes (label bg) ──
+  inputs.forEach((inp, i) => {
+    const y = rowY[i];
+    // bg pill for label
+    const foW = inputX - nodeR - 8;   // right edge just before node
+    const fo = el('foreignObject', { x: -73, y: y - 13, width: foW + 73, height: 26 });
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;height:100%;padding:2px 8px;background:#222;border:1px solid #333;border-radius:6px;';
+    const labelIn = document.createElement('input');
+    labelIn.type = 'text';
+    labelIn.className = 'svg-label-input';
+    labelIn.value = inp.label;
+    labelIn.dataset.idx = i;
+    labelIn.addEventListener('input', e => {
+      inputs[i].label = e.target.value;
+      syncLabel(i);
+    });
+    div.appendChild(labelIn);
+    fo.appendChild(div);
+    gLabels.appendChild(fo);
+  });
+
+  // ── Static lines from input nodes to weight triangles ──
+  // and from triangles to sum node — rendered every update
+
+  updateDiagram();
+}
+
+// Triangle (arrowhead shape) pointing right, centered at cx,cy, size ~28px wide
+function trianglePath(cx, cy, w=22, h=20) {
+  const lx = cx - w/2, rx = cx + w/2;
+  return `M${lx},${cy-h/2} L${rx},${cy} L${lx},${cy+h/2} Z`;
+}
+
+// Weight arrow position: midpoint between inputX+nodeR and sumX-nodeR
+function weightPos(i) {
+  const y = rowY[i];
+  const x = (inputX + nodeR + sumX - nodeR) / 2 + 10;
+  return { x, y };
+}
+
+function updateDiagram() {
+  if (!gLines) return;
+  gLines.innerHTML = '';
+  gWeightArrows.innerHTML = '';
+  gSumNode.innerHTML = '';
+  gActArrow.innerHTML = '';
+  gOutNode.innerHTML = '';
+  // Leave gNodes and gLabels for rebuild on label change only
+
+  const ws = weightedSum();
+  const out = activation(ws);
+  const sumActive = ws > 0;
+
+  // ── Lines: input → weight triangle ──
+  inputs.forEach((inp, i) => {
+    const y = rowY[i];
+    const wp = weightPos(i);
+    const active = inp.value === 1;
+    const lineColor = active ? orange : grayLt;
+    const l = el('line', {
+      x1: inputX + nodeR, y1: y,
+      x2: wp.x - 13, y2: y,
+      stroke: lineColor, 'stroke-width': 2
+    });
+    gLines.appendChild(l);
+  });
+
+  // ── Lines: weight triangle → sum node (converging) ──
+  inputs.forEach((inp, i) => {
+    const wp = weightPos(i);
+    const active = inp.value === 1;
+    const negWeight = inp.weight < 0;
+    const lineColor = (active && negWeight) ? red : (active ? orange : grayLt);
+    const l = el('line', {
+      x1: wp.x + 13, y1: rowY[i],
+      x2: sumX - nodeR, y2: midY,
+      stroke: lineColor, 'stroke-width': 2
+    });
+    gLines.appendChild(l);
+  });
+
+  // ── Weight triangles ──
+  inputs.forEach((inp, i) => {
+    const wp = weightPos(i);
+    const active = inp.value === 1;
+    const negWeight = inp.weight < 0;
+    const fillColor = negWeight ? red : (active ? orange : grayLt);
+
+    const path = el('path', {
+      d: trianglePath(wp.x, wp.y),
+      fill: fillColor,
+      opacity: active ? 1 : 0.45
+    });
+    gWeightArrows.appendChild(path);
+
+    // Weight value label
+    const wLabel = text(wp.x, wp.y - 20, fmt(inp.weight, 1), {
+      fill: negWeight ? red : (active ? orange : grayLt),
+      'font-size': 11,
+      'font-weight': 700,
+      'font-family': 'inherit'
+    });
+    gWeightArrows.appendChild(wLabel);
+  });
+
+  // ── Sum node ──
+  const sumCircle = el('circle', {
+    cx: sumX, cy: midY, r: nodeR,
+    fill: orange, opacity: 0.92
+  });
+  gSumNode.appendChild(sumCircle);
+  const sumText = text(sumX, midY, fmt(ws, 1), {
+    fill: '#fff', 'font-size': 16, 'font-weight': 700, 'font-family': 'inherit'
+  });
+  gSumNode.appendChild(sumText);
+
+  // ── Activation arrow ──
+  // Line from sum to act triangle
+  const actLine1 = el('line', {
+    x1: sumX + nodeR, y1: midY,
+    x2: actX - 14, y2: midY,
+    stroke: out > 0 ? orange : grayLt, 'stroke-width': 2
+  });
+  gActArrow.appendChild(actLine1);
+
+  // Act triangle
+  const actPath = el('path', {
+    d: trianglePath(actX, midY, 24, 22),
+    fill: out > 0 ? orange : grayLt
+  });
+  gActArrow.appendChild(actPath);
+
+  // Labels above/below activation
+  const actTop = text(actX, midY - 34, 'max(0, x)', {
+    fill: grayLt, 'font-size': 11, 'font-family': 'inherit'
+  });
+  const actBot = text(actX, midY + 34, 'activation', {
+    fill: grayLt, 'font-size': 11, 'font-family': 'inherit'
+  });
+  gActArrow.appendChild(actTop);
+  gActArrow.appendChild(actBot);
+
+  // Line from act to output
+  const actLine2 = el('line', {
+    x1: actX + 14, y1: midY,
+    x2: outX - nodeR, y2: midY,
+    stroke: out > 0 ? orange : grayLt, 'stroke-width': 2,
+    'marker-end': `url(#arr-${out > 0 ? 'orange' : 'gray'})`
+  });
+  gActArrow.appendChild(actLine2);
+
+  // ── Output node ──
+  const outFill = out > 0 ? red : gray;
+  const outCircle = el('circle', {
+    cx: outX, cy: midY, r: nodeR,
+    fill: outFill
+  });
+  gOutNode.appendChild(outCircle);
+  const outText = text(outX, midY, fmt(out, 1), {
+    fill: '#fff', 'font-size': 16, 'font-weight': 700, 'font-family': 'inherit'
+  });
+  gOutNode.appendChild(outText);
+
+  // ── Input nodes (on top, drawn last so they're clickable) ──
+  // Rebuild gNodes
+  gNodes.innerHTML = '';
+  inputs.forEach((inp, i) => {
+    const y = rowY[i];
+    const active = inp.value === 1;
+    const c = el('circle', {
+      cx: inputX, cy: y, r: nodeR,
+      fill: active ? orange : gray,
+      style: 'cursor:pointer',
+      'data-idx': i
+    });
+    c.addEventListener('click', () => {
+      inputs[i].value = inputs[i].value === 1 ? 0 : 1;
+      updateAll();
+    });
+    gNodes.appendChild(c);
+
+    const vt = text(inputX, y, inp.value, {
+      fill: '#fff', 'font-size': 18, 'font-weight': 700,
+      'font-family': 'inherit', style: 'pointer-events:none'
+    });
+    gNodes.appendChild(vt);
+  });
+}
+
+// Sync label from SVG inputs to weight panel inputs
+function syncLabel(idx) {
+  // update svg label input (already done via event)
+  // update weight panel label input
+  const panelInputs = document.querySelectorAll('.weight-input-label');
+  if (panelInputs[idx]) panelInputs[idx].value = inputs[idx].label;
+  // update diagram svg label inputs
+  const svgInputs = document.querySelectorAll('.svg-label-input');
+  if (svgInputs[idx]) svgInputs[idx].value = inputs[idx].label;
+}
+
+// ── Weights Panel ──────────────────────────────────────────────────────────
+function buildWeightsPanel() {
+  const panel = document.getElementById('weights-panel');
+  panel.innerHTML = '';
+  inputs.forEach((inp, i) => {
+    const row = document.createElement('div');
+    row.className = 'weight-row';
+    row.dataset.idx = i;
+
+    const dot = document.createElement('div');
+    dot.className = 'dot';
+    dot.style.background = inp.value ? orange : grayLt;
+
+    const labelIn = document.createElement('input');
+    labelIn.type = 'text';
+    labelIn.className = 'weight-input-label';
+    labelIn.value = inp.label;
+    labelIn.addEventListener('input', e => {
+      inputs[i].label = e.target.value;
+      // sync SVG label inputs
+      const svgInputs = document.querySelectorAll('.svg-label-input');
+      if (svgInputs[i]) svgInputs[i].value = inputs[i].label;
+    });
+
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = -10; slider.max = 10; slider.step = 0.5;
+    slider.value = inp.weight;
+    slider.className = inp.value ? 'active' : '';
+    slider.addEventListener('input', e => {
+      inputs[i].weight = parseFloat(e.target.value);
+      updateAll();
+    });
+
+    const wVal = document.createElement('div');
+    wVal.className = 'weight-val';
+    wVal.textContent = fmt(inp.weight, 1);
+
+    const contrib = document.createElement('div');
+    contrib.className = 'contribution';
+
+    row.appendChild(dot);
+    row.appendChild(labelIn);
+    row.appendChild(slider);
+    row.appendChild(wVal);
+    row.appendChild(contrib);
+    panel.appendChild(row);
+
+    updateWeightRow(row, inp);
+  });
+}
+
+function updateWeightRow(row, inp) {
+  const dot = row.children[0];
+  const slider = row.children[2];
+  const wVal = row.children[3];
+  const contrib = row.children[4];
+
+  dot.style.background = inp.value ? orange : grayLt;
+  slider.className = inp.value ? 'active' : '';
+  slider.value = inp.weight;
+  wVal.textContent = fmt(inp.weight, 1);
+
+  if (inp.value === 0) {
+    contrib.textContent = '(off)';
+    contrib.className = 'contribution contrib-off';
+  } else {
+    const c = inp.value * inp.weight;
+    contrib.textContent = (c >= 0 ? '+' : '') + fmt(c, 1);
+    contrib.className = 'contribution ' + (c > 0 ? 'contrib-pos' : c < 0 ? 'contrib-neg' : 'contrib-off');
+  }
+}
+
+function updateWeightsPanel() {
+  const rows = document.querySelectorAll('#weights-panel .weight-row');
+  rows.forEach((row, i) => updateWeightRow(row, inputs[i]));
+}
+
+// ── Math Strip ────────────────────────────────────────────────────────────
+function updateMathStrip() {
+  const ws = weightedSum();
+  const out = activation(ws);
+
+  const parts1a = inputs.map(inp => `${inp.value}×${fmt(inp.weight,1)}`).join(' + ');
+  const parts1b = inputs.map(inp => fmt(inp.value * inp.weight, 1)).join(' + ');
+  const line1a = `1. Weighted sum: ${parts1a}`;
+  const line1b = `   = ${parts1b} = ${fmt(ws, 2)}`;
+  const line2  = `2. Activation max(0, x): max(0, ${fmt(ws, 2)}) = ${fmt(out, 2)}`;
+
+  document.getElementById('math-strip').innerHTML =
+    `${line1a}<br>${line1b}<br>${line2}`;
+}
+
+// ── Verdict ───────────────────────────────────────────────────────────────
+function updateVerdict() {
+  const out = output();
+  const ws = weightedSum();
+  const q = document.getElementById('question-input').value || 'Your question';
+  const card = document.getElementById('verdict-card');
+  const vq = document.getElementById('verdict-question');
+  const vn = document.getElementById('verdict-number');
+  const vr = document.getElementById('verdict-result');
+  const vw = document.getElementById('verdict-why');
+
+  vq.textContent = q;
+  vn.textContent = fmt(out, 2);
+
+  if (out > 0) {
+    card.className = 'verdict-card';
+    vr.textContent = 'Neuron says: YES';
+    vr.className = 'verdict-result yes';
+    vw.textContent = `output ${fmt(out, 2)} > 0, so the signal passes through`;
+  } else {
+    card.className = 'verdict-card inactive';
+    vr.textContent = 'Neuron says: NO';
+    vr.className = 'verdict-result no';
+    if (ws < 0) {
+      vw.textContent = `weighted sum ${fmt(ws, 2)} < 0, activation clamps it to 0`;
+    } else {
+      vw.textContent = `output is 0, signal blocked`;
+    }
+  }
+}
+
+// ── Master update ─────────────────────────────────────────────────────────
+function updateAll() {
+  updateDiagram();
+  updateWeightsPanel();
+  updateMathStrip();
+  updateVerdict();
+}
+
+// ── Question sync ─────────────────────────────────────────────────────────
+document.getElementById('question-input').addEventListener('input', updateVerdict);
+
+// ── Reset ─────────────────────────────────────────────────────────────────
+document.getElementById('reset-btn').addEventListener('click', () => {
+  inputs = DEFAULTS.map(d => ({ ...d }));
+  buildDiagram();
+  buildWeightsPanel();
+  updateAll();
+  document.getElementById('question-input').value = 'Should I eat lunch right now?';
+  updateVerdict();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────
+buildDiagram();
+buildWeightsPanel();
+updateAll();
+</script>
+</body>
+</html>
